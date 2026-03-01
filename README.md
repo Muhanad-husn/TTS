@@ -1,7 +1,29 @@
+<div align="center">
+
 # Pocket-TTS Wyoming + Read Aloud
 
-> Fork of [ikidd/pocket-tts-wyoming](https://github.com/ikidd/pocket-tts-wyoming) — a Wyoming protocol server for [Pocket-TTS](https://github.com/kyutai-labs/pocket-tts) (fast, local neural TTS).
-> This fork adds **Read Aloud**, a CLI tool that reads PDF, DOCX, EPUB, and Markdown files aloud through the TTS server.
+**Local, fast, neural text-to-speech — from documents to speech in one command.**
+
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://github.com/Muhanad-husn/TTS/pkgs/container/pocket-tts-wyoming)
+[![Wyoming Protocol](https://img.shields.io/badge/Wyoming-Protocol-5D3FD3)](https://github.com/rhasspy/wyoming)
+[![Pocket-TTS](https://img.shields.io/badge/Engine-Pocket--TTS-FF6F00)](https://github.com/kyutai-labs/pocket-tts)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-compatible-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
+[![License](https://img.shields.io/github/license/Muhanad-husn/TTS)](LICENSE)
+
+</div>
+
+---
+
+| | |
+|---|---|
+| **What** | A Wyoming protocol TTS server powered by [Pocket-TTS](https://github.com/kyutai-labs/pocket-tts) — a fast, local neural TTS engine by Kyutai Labs. Includes **Read Aloud**, a CLI tool that reads PDF, DOCX, EPUB, and Markdown files aloud. |
+| **Why** | Fully offline, privacy-respecting speech synthesis. No cloud APIs, no subscriptions — just fast, natural-sounding TTS running on your own hardware. |
+| **For whom** | Home Assistant users, self-hosters, accessibility enthusiasts, anyone who wants local TTS. |
+| **Voices** | 8 built-in voices: `alba` `marius` `javert` `jean` `fantine` `cosette` `eponine` `azelma` |
+| **Runs on** | Docker (CPU). ~500 MB model download on first run, cached thereafter. |
+| **Based on** | Fork of [ikidd/pocket-tts-wyoming](https://github.com/ikidd/pocket-tts-wyoming) |
+
+---
 
 ## Quick Start
 
