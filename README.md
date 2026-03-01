@@ -27,15 +27,50 @@
 
 ## Quick Start
 
-### 1. Start the TTS server
+### Prerequisites
+
+You need two things installed on your computer:
+
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** — download and install for your operating system (Windows, macOS, or Linux). Launch it after installing.
+- **[Git](https://git-scm.com/downloads)** *(optional)* — used to download the project. If you'd rather not install Git, you can download the project as a ZIP file instead (see below).
+
+### 1. Get the project
+
+**Option A — Clone with Git** (recommended):
+
+Open a terminal (Command Prompt or PowerShell on Windows, Terminal on macOS/Linux) and run:
+
+```bash
+git clone https://github.com/Muhanad-husn/TTS.git
+```
+
+**Option B — Download as ZIP** (no Git needed):
+
+1. Go to [github.com/Muhanad-husn/TTS](https://github.com/Muhanad-husn/TTS)
+2. Click the green **Code** button, then **Download ZIP**
+3. Extract the ZIP file to a folder on your computer
+
+### 2. Open the project folder in a terminal
+
+Navigate into the project directory you just downloaded:
+
+```bash
+cd TTS
+```
+
+> **Tip**: On Windows, you can also open the folder in File Explorer, click the address bar, type `cmd`, and press Enter to open a terminal already inside the folder.
+
+### 3. Start the TTS server
+
+Make sure Docker Desktop is running, then start the server:
 
 ```bash
 docker compose up -d
 ```
 
-First run downloads ~500MB of model weights. Subsequent starts are fast thanks to volume-cached models.
+First run downloads ~500 MB of model weights. Subsequent starts are fast thanks to volume-cached models.
 
-### 2. Read a document aloud
+### 4. Read a document aloud
 
 No local Python needed — the Read Aloud tool runs entirely in Docker:
 
