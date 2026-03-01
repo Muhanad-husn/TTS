@@ -6,9 +6,15 @@ services:
       # Prefix trimming tunables (in seconds)
       # Minimum time before looking for the pause after the sacrificial "..." prefix
       - PREFIX_MIN_DURATION=0.15
-      # Maximum time to search for the prefix end  
+      # Maximum time to search for the prefix end
       - PREFIX_MAX_DURATION=1.0
       # Minimum silence duration to consider it the gap after the prefix
       - PREFIX_SILENCE_GAP=0.08
+      # Pause insertion tunables (in seconds)
+      - PAUSE_ENABLED=true
+      - PAUSE_SENTENCE=2.0
+      - PAUSE_PARAGRAPH=2.0
+      - PAUSE_SECTION=2.0
+      - PAUSE_CHAPTER=2.5
     volumes:
       - .:/output

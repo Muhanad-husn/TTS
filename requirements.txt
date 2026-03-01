@@ -1,0 +1,10 @@
+rich
+sounddevice
+numpy
+wyoming>=1.8,<2
+
+# Optional: install based on file formats you need
+# PyMuPDF        # PDF support
+# python-docx    # DOCX support
+# ebooklib       # EPUB support
+# beautifulsoup4 # EPUB support

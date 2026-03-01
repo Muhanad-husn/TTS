@@ -1,8 +1,9 @@
 services:
   pocket-tts-wyoming:
-    image: ghcr.io/ikidd/pocket-tts-wyoming:latest
+    build: .
     container_name: pocket-tts-wyoming
-    network_mode: host
+    ports:
+      - "10201:10201"
     environment:
       - WYOMING_PORT=10201
       - WYOMING_HOST=0.0.0.0

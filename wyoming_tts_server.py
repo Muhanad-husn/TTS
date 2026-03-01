@@ -10,7 +10,9 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import wave
+from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from typing import Optional
@@ -48,8 +50,141 @@ PREFIX_MAX_DURATION = float(os.environ.get("PREFIX_MAX_DURATION", "1.0"))
 # Minimum silence duration to consider it the gap after the prefix
 PREFIX_SILENCE_GAP = float(os.environ.get("PREFIX_SILENCE_GAP", "0.08"))
 
+# Pause insertion tunables (in seconds). Set PAUSE_ENABLED=false to disable.
+PAUSE_ENABLED = os.environ.get("PAUSE_ENABLED", "true").lower() in ("true", "1", "yes")
+PAUSE_SENTENCE = float(os.environ.get("PAUSE_SENTENCE", "2.0"))
+PAUSE_PARAGRAPH = float(os.environ.get("PAUSE_PARAGRAPH", "2.0"))
+PAUSE_SECTION = float(os.environ.get("PAUSE_SECTION", "2.0"))
+PAUSE_CHAPTER = float(os.environ.get("PAUSE_CHAPTER", "2.5"))
+
 _VOICE_STATES: dict[str, dict] = {}
 _VOICE_LOCK = asyncio.Lock()
+
+
+@dataclass
+class TextSegment:
+    """A segment of text with an associated pause duration after it."""
+    text: str
+    pause_after: float
+
+
+def _is_synthesizable(text: str) -> bool:
+    """Return True if text contains actual words to synthesize (not just whitespace/punctuation)."""
+    return bool(re.search(r'[a-zA-Z0-9]', text))
+
+
+def segment_text_for_pauses(raw_text: str) -> list[TextSegment]:
+    """Split text into segments with pause durations based on structural boundaries.
+
+    Detects chapter titles, section breaks, paragraph breaks, and sentence boundaries.
+    Each segment gets a pause_after value based on the strongest boundary that follows it.
+    """
+    # Split into lines for structural analysis
+    lines = raw_text.split('\n')
+
+    # Classify each line
+    CHAPTER_RE = re.compile(
+        r'^(?:chapter\s+\S+|part\s+\S+|book\s+\S+|prologue|epilogue|introduction|preface|afterword)\s*[:\-—]?\s*.*$',
+        re.IGNORECASE,
+    )
+    SECTION_BREAK_RE = re.compile(r'^[\s]*[-*=~#]{3,}[\s]*$')
+    ALL_CAPS_TITLE_RE = re.compile(r'^[A-Z][A-Z\s\d:,\-—]{2,}$')
+
+    # Group lines into blocks separated by structural markers
+    segments: list[TextSegment] = []
+
+    # First pass: group lines into paragraphs and identify structural elements
+    blocks: list[tuple[str, str]] = []  # (type, text) where type is 'chapter', 'section', 'paragraph'
+    current_paragraph_lines: list[str] = []
+
+    def flush_paragraph():
+        if current_paragraph_lines:
+            text = ' '.join(current_paragraph_lines)
+            text = ' '.join(text.strip().split())  # normalize whitespace
+            if text:
+                blocks.append(('paragraph', text))
+            current_paragraph_lines.clear()
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # Section break (---, ***, ===, etc.)
+        if SECTION_BREAK_RE.match(stripped):
+            flush_paragraph()
+            blocks.append(('section', ''))
+            i += 1
+            continue
+
+        # Chapter title detection
+        if stripped and CHAPTER_RE.match(stripped):
+            flush_paragraph()
+            blocks.append(('chapter', stripped))
+            i += 1
+            continue
+
+        # All-caps short title followed by a blank line (look ahead)
+        if stripped and ALL_CAPS_TITLE_RE.match(stripped) and len(stripped) <= 60:
+            next_blank = (i + 1 < len(lines) and not lines[i + 1].strip()) if i + 1 < len(lines) else True
+            if next_blank:
+                flush_paragraph()
+                blocks.append(('chapter', stripped))
+                i += 1
+                continue
+
+        # Blank line = paragraph boundary
+        if not stripped:
+            flush_paragraph()
+            i += 1
+            continue
+
+        # Regular text line
+        current_paragraph_lines.append(stripped)
+        i += 1
+
+    flush_paragraph()
+
+    # Second pass: split paragraphs into sentences and assign pause durations
+    for block_idx, (block_type, block_text) in enumerate(blocks):
+        if block_type == 'section':
+            # Section break itself has no text, but it affects the pause of the preceding segment
+            if segments:
+                segments[-1].pause_after = max(segments[-1].pause_after, PAUSE_SECTION)
+            continue
+
+        if block_type == 'chapter':
+            # Chapter title: apply chapter pause to preceding segment (if any)
+            if segments:
+                segments[-1].pause_after = max(segments[-1].pause_after, PAUSE_CHAPTER)
+            # Add the title text as its own segment
+            if _is_synthesizable(block_text):
+                segments.append(TextSegment(text=block_text, pause_after=PAUSE_CHAPTER))
+            continue
+
+        # Regular paragraph: split into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', block_text)
+        for sent_idx, sentence in enumerate(sentences):
+            sentence = ' '.join(sentence.strip().split())
+            if not sentence:
+                continue
+
+            # Determine pause: last sentence in paragraph gets paragraph pause,
+            # others get sentence pause
+            is_last_sentence = sent_idx == len(sentences) - 1
+            if is_last_sentence:
+                # Check what follows this paragraph
+                pause = PAUSE_PARAGRAPH
+            else:
+                pause = PAUSE_SENTENCE
+
+            segments.append(TextSegment(text=sentence, pause_after=pause))
+
+    # Remove trailing pause from the very last segment (trimmed later anyway)
+    if segments:
+        segments[-1].pause_after = 0.0
+
+    return segments
 
 
 class PocketTTSEventHandler(AsyncEventHandler):
@@ -127,6 +262,77 @@ class PocketTTSEventHandler(AsyncEventHandler):
             )
             raise err
 
+    def _synthesize_segment(self, text: str, voice_state, sample_rate: int) -> Optional[numpy.ndarray]:
+        """Synthesize a single text segment with prefix hack. Returns float32 audio or None."""
+        # Add sacrificial prefix to prevent the first word from being swallowed
+        prefixed_text = "... " + text
+
+        audio_chunks = self.tts_model.generate_audio_stream(
+            model_state=voice_state, text_to_generate=prefixed_text, copy_state=True
+        )
+
+        all_audio_arrays = []
+        for audio_chunk in audio_chunks:
+            audio_array = audio_chunk.detach().cpu().numpy()
+            all_audio_arrays.append(audio_array)
+
+        if not all_audio_arrays:
+            return None
+
+        full_audio = numpy.concatenate(all_audio_arrays)
+
+        # Find and remove the sacrificial prefix ("...") by detecting the pause after it
+        silence_threshold = 0.01
+        max_amplitude = numpy.abs(full_audio).max()
+        if max_amplitude == 0:
+            return None
+        threshold = max_amplitude * silence_threshold
+
+        min_prefix_samples = int(sample_rate * PREFIX_MIN_DURATION)
+        max_prefix_samples = int(sample_rate * PREFIX_MAX_DURATION)
+        min_silence_samples = int(sample_rate * PREFIX_SILENCE_GAP)
+
+        prefix_end = 0
+        if len(full_audio) > min_prefix_samples:
+            search_end = min(len(full_audio), max_prefix_samples)
+            is_silent = numpy.abs(full_audio[:search_end]) < threshold
+
+            i = min_prefix_samples
+            while i < search_end:
+                if is_silent[i]:
+                    silence_start = i
+                    while i < search_end and is_silent[i]:
+                        i += 1
+                    silence_length = i - silence_start
+                    if silence_length >= min_silence_samples:
+                        prefix_end = i
+                        break
+                else:
+                    i += 1
+
+        if prefix_end > 0:
+            _LOGGER.debug("Trimming prefix: %d samples (%.3fs)",
+                          prefix_end, prefix_end / sample_rate)
+            full_audio = full_audio[prefix_end:]
+
+        # Trim leading silence
+        non_silent_indices = numpy.where(numpy.abs(full_audio) > threshold)[0]
+        if len(non_silent_indices) > 0:
+            padding_samples = int(sample_rate * 0.05)  # 50ms padding
+            first_non_silent = max(0, non_silent_indices[0] - padding_samples)
+            full_audio = full_audio[first_non_silent:]
+
+            # Trim trailing silence
+            non_silent_indices = numpy.where(numpy.abs(full_audio) > threshold)[0]
+            if len(non_silent_indices) > 0:
+                last_non_silent = non_silent_indices[-1] + padding_samples
+                full_audio = full_audio[:last_non_silent + 1]
+
+        if len(full_audio) == 0:
+            return None
+
+        return full_audio
+
     async def _handle_synthesize(
         self, synthesize: Synthesize, send_start: bool = True, send_stop: bool = True
     ) -> bool:
@@ -134,20 +340,13 @@ class PocketTTSEventHandler(AsyncEventHandler):
         _LOGGER.debug(synthesize)
 
         raw_text = synthesize.text
-        text = " ".join(raw_text.strip().splitlines())
 
-        if not text:
+        if not raw_text.strip():
             _LOGGER.warning("Empty text received")
             if send_stop:
                 await self.write_event(AudioStop().event())
             return True
 
-        _LOGGER.debug("synthesize: raw_text=%s, text='%s'", raw_text, text)
-        
-        # Add a sacrificial prefix to prevent the first word from being swallowed
-        # by the voice prompt "blend region". This prefix audio will be trimmed later.
-        text = "... " + text
-        
         voice_name: Optional[str] = None
 
         if synthesize.voice is not None:
@@ -189,16 +388,25 @@ class PocketTTSEventHandler(AsyncEventHandler):
             voice_state = _VOICE_STATES[voice_name]
 
             try:
-                _LOGGER.info(
-                    "Synthesizing text (voice: %s, length: %d chars)", voice_name, len(text)
-                )
-
                 sample_rate = self.tts_model.sample_rate
                 width = 2
                 channels = 1
                 bytes_per_sample = width * channels
                 samples_per_chunk = 1024
                 bytes_per_chunk = bytes_per_sample * samples_per_chunk
+
+                # Build segments
+                if PAUSE_ENABLED:
+                    segments = segment_text_for_pauses(raw_text)
+                else:
+                    # Disabled: single segment with original whitespace normalization
+                    text = " ".join(raw_text.strip().splitlines())
+                    segments = [TextSegment(text=text, pause_after=0.0)]
+
+                _LOGGER.info(
+                    "Synthesizing %d segment(s) (voice: %s, total chars: %d)",
+                    len(segments), voice_name, sum(len(s.text) for s in segments),
+                )
 
                 if send_start:
                     await self.write_event(
@@ -209,72 +417,42 @@ class PocketTTSEventHandler(AsyncEventHandler):
                         ).event(),
                     )
 
-                audio_chunks = self.tts_model.generate_audio_stream(
-                    model_state=voice_state, text_to_generate=text, copy_state=True
-                )
+                all_audio: list[numpy.ndarray] = []
 
-                all_audio_arrays = []
-                for audio_chunk in audio_chunks:
-                    audio_array = audio_chunk.detach().cpu().numpy()
-                    all_audio_arrays.append(audio_array)
+                for seg_idx, segment in enumerate(segments):
+                    if _is_synthesizable(segment.text):
+                        _LOGGER.debug(
+                            "Segment %d/%d: '%s' (pause_after=%.2fs)",
+                            seg_idx + 1, len(segments),
+                            segment.text[:80], segment.pause_after,
+                        )
+                        audio = self._synthesize_segment(
+                            segment.text, voice_state, sample_rate
+                        )
+                        if audio is not None:
+                            all_audio.append(audio)
 
-                if not all_audio_arrays:
+                    if segment.pause_after > 0:
+                        silence = numpy.zeros(
+                            int(sample_rate * segment.pause_after), dtype=numpy.float32
+                        )
+                        all_audio.append(silence)
+
+                if not all_audio:
                     if send_stop:
                         await self.write_event(AudioStop().event())
                     return True
 
-                full_audio = numpy.concatenate(all_audio_arrays)
+                full_audio = numpy.concatenate(all_audio)
 
-                # Find and remove the sacrificial prefix ("...") by detecting the pause after it
-                # This adapts to different voice speeds rather than using a fixed duration
+                # Trim trailing silence from the very end (no dangling pause)
                 silence_threshold = 0.01
                 max_amplitude = numpy.abs(full_audio).max()
-                threshold = max_amplitude * silence_threshold
-                
-                # Minimum time before we start looking for the pause (avoid false early detection)
-                min_prefix_samples = int(sample_rate * PREFIX_MIN_DURATION)
-                # Maximum time to search for the prefix end
-                max_prefix_samples = int(sample_rate * PREFIX_MAX_DURATION)
-                # Minimum silence duration to consider it the gap after "..."
-                min_silence_samples = int(sample_rate * PREFIX_SILENCE_GAP)
-                
-                # Find where the prefix ends by looking for a silence gap
-                prefix_end = 0
-                if len(full_audio) > min_prefix_samples:
-                    search_end = min(len(full_audio), max_prefix_samples)
-                    is_silent = numpy.abs(full_audio[:search_end]) < threshold
-                    
-                    # Look for a silence gap after the minimum prefix duration
-                    i = min_prefix_samples
-                    while i < search_end:
-                        if is_silent[i]:
-                            # Found start of silence, check if it's long enough
-                            silence_start = i
-                            while i < search_end and is_silent[i]:
-                                i += 1
-                            silence_length = i - silence_start
-                            if silence_length >= min_silence_samples:
-                                # Found the gap after the prefix - start after this silence
-                                prefix_end = i
-                                break
-                        else:
-                            i += 1
-                
-                if prefix_end > 0:
-                    _LOGGER.debug("Trimming prefix: %d samples (%.3fs)", 
-                                  prefix_end, prefix_end / sample_rate)
-                    full_audio = full_audio[prefix_end:]
-
-                # Trim any remaining leading silence
-                non_silent_indices = numpy.where(numpy.abs(full_audio) > threshold)[0]
-                if len(non_silent_indices) > 0:
-                    padding_samples = int(sample_rate * 0.05)  # 50ms padding
-                    first_non_silent = max(0, non_silent_indices[0] - padding_samples)
-                    full_audio = full_audio[first_non_silent:]
-                    
-                    # Trim trailing silence at the end
+                if max_amplitude > 0:
+                    threshold = max_amplitude * silence_threshold
                     non_silent_indices = numpy.where(numpy.abs(full_audio) > threshold)[0]
                     if len(non_silent_indices) > 0:
+                        padding_samples = int(sample_rate * 0.05)
                         last_non_silent = non_silent_indices[-1] + padding_samples
                         full_audio = full_audio[:last_non_silent + 1]
 
