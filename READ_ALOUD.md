@@ -8,8 +8,9 @@ Features include interactive playback controls, rich terminal output with progre
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
+- [Docker Usage (recommended)](#docker-usage-recommended)
+- [Prerequisites (local)](#prerequisites-local)
+- [Installation (local)](#installation-local)
 - [Quick Start](#quick-start)
 - [Usage Reference](#usage-reference)
   - [Arguments](#arguments)
@@ -38,13 +39,57 @@ Features include interactive playback controls, rich terminal output with progre
 
 ---
 
-## Prerequisites
+## Docker Usage (recommended)
+
+The easiest way to use Read Aloud — no Python or dependencies required. Just Docker.
+
+```bash
+# Linux / macOS
+./start.sh my_document.pdf
+
+# Windows (PowerShell)
+.\start.ps1 my_document.pdf
+
+# With options
+./start.sh --voice cosette --pages 1-5 my_document.pdf
+```
+
+The script:
+1. Creates `input/` and `output/` directories
+2. Copies your file into `input/`
+3. Starts the TTS server (if not already running)
+4. Runs Read Aloud in a container
+5. Writes the resulting WAV to `output/`
+
+You can also use `docker compose` directly:
+
+```bash
+# Start the TTS server
+docker compose up -d pocket-tts-wyoming
+
+# Run Read Aloud (file must be in input/)
+docker compose run --rm read-aloud /input/my_document.pdf
+
+# List available voices
+docker compose run --rm read-aloud --list-voices
+
+# Dry run (parse only, no synthesis)
+docker compose run --rm read-aloud --dry-run /input/my_document.pdf
+```
+
+> **Note**: Docker Desktop on Windows/macOS cannot pass audio devices to containers. The containerized tool automatically detects this and saves output as WAV files instead of playing through speakers. For live speaker playback, use the [local Python setup](#prerequisites-local) below.
+
+---
+
+## Prerequisites (local)
+
+For live audio playback through your speakers, you can run Read Aloud locally:
 
 1. **Python 3.10+**
 2. **A running Pocket-TTS Wyoming server** — the tool connects to it over TCP to synthesize speech. The server can be running locally, in Docker, or on a remote machine. See the main [README](README.md) for server setup instructions.
 3. **Audio output device** — speakers or headphones connected to the machine running the tool.
 
-## Installation
+## Installation (local)
 
 Install the required Python packages:
 

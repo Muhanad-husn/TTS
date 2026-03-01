@@ -10,6 +10,7 @@ import sounddevice as sd
 from rich.live import Live
 
 from read_aloud import console
+from read_aloud.audio import has_audio_output
 from read_aloud.display import _build_status_display
 from read_aloud.keyboard import KeyboardListener
 from read_aloud.models import PlaybackState, SynthesisResult
@@ -69,6 +70,7 @@ async def _player_task(
     stream: sd.OutputStream | None = None
     interactive = keyboard is not None and sys.stdin.isatty()
     state = PlaybackState()
+    audio_available = has_audio_output()
 
     # Chunk size for interactivity: ~100ms at 24kHz = 2400 samples
     CHUNK_SAMPLES = 2400
@@ -115,6 +117,18 @@ async def _player_task(
                 samples = np.frombuffer(result.pcm, dtype=np.int16)
                 if result.channels > 1:
                     samples = samples.reshape(-1, result.channels)
+
+                # Skip playback when no audio device is available
+                if not audio_available:
+                    state.completed_count += 1
+                    live.update(_build_status_display(state, interactive))
+                    # Still append inter-paragraph silence to WAV data
+                    if result.index < result.total:
+                        pause_samples = np.zeros(result.rate * 2, dtype=np.int16)
+                        if result.channels > 1:
+                            pause_samples = pause_samples.reshape(-1, result.channels)
+                        all_pcm.append(pause_samples.tobytes())
+                    continue
 
                 # Lazily open the output stream on first valid audio
                 if stream is None:

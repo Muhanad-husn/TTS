@@ -15,6 +15,20 @@ services:
       - pocket-tts-hf-cache:/root/.cache/huggingface
       - pocket-tts-cache:/root/.cache/pocket_tts
 
+  read-aloud:
+    build:
+      context: .
+      dockerfile: Dockerfile.read-aloud
+    profiles:
+      - cli
+    depends_on:
+      - pocket-tts-wyoming
+    volumes:
+      - ./input:/input
+      - ./output:/output
+    stdin_open: true
+    tty: true
+
 volumes:
   pocket-tts-hf-cache:
     driver: local

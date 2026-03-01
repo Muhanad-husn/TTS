@@ -1,0 +1,30 @@
+FROM python:3.12-slim
+
+# System dependency for sounddevice (PortAudio)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libportaudio2 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies (all optional parsers included)
+COPY requirements.txt .
+RUN pip install --no-cache-dir \
+    -r requirements.txt \
+    PyMuPDF \
+    python-docx \
+    ebooklib \
+    beautifulsoup4
+
+# Copy application code
+COPY read_aloud/ read_aloud/
+COPY read_aloud.py .
+
+# Mount points for input documents and output WAVs
+RUN mkdir -p /input /output
+
+# Auto-connect to the TTS server via Docker network DNS
+ENV READ_ALOUD_URI=tcp://pocket-tts-wyoming:10201
+
+ENTRYPOINT ["python", "read_aloud.py"]
+CMD ["--help"]

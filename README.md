@@ -37,19 +37,7 @@ First run downloads ~500MB of model weights. Subsequent starts are fast thanks t
 
 ### 2. Read a document aloud
 
-Install the client dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Then read a document:
-
-```bash
-python read_aloud.py my_document.pdf
-```
-
-Or use the convenience scripts that start the server and launch the reader in one step:
+No local Python needed — the Read Aloud tool runs entirely in Docker:
 
 ```bash
 # Linux / macOS
@@ -57,9 +45,32 @@ Or use the convenience scripts that start the server and launch the reader in on
 
 # Windows (PowerShell)
 .\start.ps1 my_document.pdf
+
+# With options
+./start.sh --voice cosette --pages 1-5 my_document.pdf
+```
+
+The script starts the TTS server (if not already running), copies the file into a container, synthesizes speech, and writes the WAV output to the `output/` directory.
+
+> **Note**: Docker containers cannot access host audio devices on Windows/macOS, so containerized usage produces WAV files. For live speaker playback, use the [local Python setup](#local-python-alternative).
+
+You can also use `docker compose` directly:
+
+```bash
+docker compose up -d pocket-tts-wyoming
+docker compose run --rm read-aloud --voice cosette /input/my_doc.pdf
 ```
 
 See [READ_ALOUD.md](READ_ALOUD.md) for full documentation — voices, interactive controls, WAV export, device selection, config files, and more.
+
+### Local Python alternative
+
+If you prefer live audio playback through your speakers, install the client locally:
+
+```bash
+pip install -r requirements.txt
+python read_aloud.py my_document.pdf
+```
 
 ## Server Configuration
 

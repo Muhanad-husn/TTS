@@ -77,5 +77,9 @@ htmlcov/
 # Claude Code
 .claude/
 
+# Read Aloud input/output directories
+input/
+output/
+
 # Sample files
 dummytext.pdf

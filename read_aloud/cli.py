@@ -7,11 +7,10 @@ import sys
 import wave
 from pathlib import Path
 
-import sounddevice as sd
 from rich.logging import RichHandler
 
 from read_aloud import DEFAULT_URI, VOICES, console
-from read_aloud.audio import list_devices, resolve_device
+from read_aloud.audio import has_audio_output, list_devices, resolve_device
 from read_aloud.config import load_config, save_config
 from read_aloud.display import display_dry_run
 from read_aloud.keyboard import KeyboardListener
@@ -19,6 +18,12 @@ from read_aloud.models import SynthesisResult
 from read_aloud.parsers import PARSERS, parse_page_ranges, split_long_paragraphs
 from read_aloud.pipeline import _player_task, _synthesizer_task
 from read_aloud.tts import list_server_voices, wait_for_server
+
+try:
+    import sounddevice as sd
+    _HAS_SD = True
+except (ImportError, OSError):
+    _HAS_SD = False
 
 
 async def read_aloud(
@@ -251,6 +256,17 @@ def main() -> None:
     # Resolve device
     device = resolve_device(args.device) if args.device is not None else None
 
+    # Detect no-audio-device condition and auto-set output
+    if not args.dry_run and args.output is None and not has_audio_output():
+        # In container: write to /output/; locally: write to current dir
+        output_dir = Path("/output") if Path("/output").is_dir() else Path(".")
+        auto_path = output_dir / f"{args.files[0].stem}.wav"
+        console.print(
+            f"[yellow]No audio device detected. "
+            f"Output will be saved to: {auto_path}[/yellow]"
+        )
+        args.output = auto_path
+
     # Parse page ranges
     pages = parse_page_ranges(args.pages) if args.pages is not None else None
 
@@ -284,7 +300,8 @@ def main() -> None:
                 device=device,
             ))
     except KeyboardInterrupt:
-        sd.stop()
+        if _HAS_SD:
+            sd.stop()
         console.print("\n[yellow]Stopped.[/yellow]")
 
 
