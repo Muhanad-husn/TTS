@@ -43,6 +43,38 @@ Features include interactive playback controls, rich terminal output with progre
 
 The easiest way to use Read Aloud — no Python or dependencies required. Just Docker.
 
+### Prerequisites
+
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** — download, install, and launch it before proceeding.
+
+### 1. Get the project
+
+**Option A — Clone with Git** (recommended):
+
+Open a terminal (Command Prompt or PowerShell on Windows, Terminal on macOS/Linux) and run:
+
+```bash
+git clone https://github.com/Muhanad-husn/TTS.git
+```
+
+**Option B — Download as ZIP** (no Git needed):
+
+1. Go to [github.com/Muhanad-husn/TTS](https://github.com/Muhanad-husn/TTS)
+2. Click the green **Code** button, then **Download ZIP**
+3. Extract the ZIP file to a folder on your computer
+
+### 2. Open the project folder in a terminal
+
+```bash
+cd TTS
+```
+
+> **Tip**: On Windows, you can also open the folder in File Explorer, click the address bar, type `cmd`, and press Enter to open a terminal already inside the folder.
+
+### 3. Run Read Aloud
+
+Make sure Docker Desktop is running, then:
+
 ```bash
 # Linux / macOS
 ./start.sh my_document.pdf
