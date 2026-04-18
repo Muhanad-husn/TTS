@@ -174,6 +174,6 @@ Audio-prompt based TTS models like Pocket-TTS can "swallow" the first word into 
 - [rhasspy/wyoming](https://github.com/rhasspy/wyoming) — the Wyoming voice assistant protocol
 
 ## 📅 Release Status
-- **⏳ Last Build On**: 2026-04-14 00:25:54 UTC
-- **🔄 Last Run**: 2026-04-17 00:24:45 UTC
-- **Last Upstream SHA**: 119ca2e618dd38e8907c0bc9609c8d1773853062
+- **⏳ Last Build On**: 2026-04-18 00:22:11 UTC
+- **🔄 Last Run**: 2026-04-18 00:22:11 UTC
+- **Last Upstream SHA**: c9ebef4d1ad79828cdade26cf4448af4433b804a
